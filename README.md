@@ -1,30 +1,170 @@
-The Idea is simple but yet powerful
-We give the users a canvas and they can draw anything they want on it
-and then they can export the ui in react code
+Canvas Builder
 
-let me give you some phases
+Canvas Builder is an open-source visual UI builder for React that lets developers design web interfaces visually and export them as real, maintainable React projects.
 
-[x] Phase 1
+Instead of treating a design as a collection of pixels, Canvas Builder represents the interface as a structured, editable component tree. This makes the visual editor, preview, and generated code part of the same underlying system.
 
-Init git repository and publish it public in github
+✨ Vision
 
-Start creating basic shapes and components that are used a lot in web apps such as header or hero card, texts, buttons, etc.
+The goal is to bridge the gap between visual design and real frontend development.
 
-The finish line of this phase is when a user can open a canvas, give it a name (which is the name of the page), and draw components on it.
-No need for exporting yet.
+Visual Design
+      ↓
+Structured UI Tree
+      ↓
+React Code
+      ↓
+Real Project
 
-## Code organization
+Canvas Builder is designed to produce code that developers can continue working with after export—not a static image or an opaque generated representation.
 
-Canvas editor code lives under `src/core/`. The editor UI is split into focused components, canvas item data and component definitions live in `models/`, and `factories/CanvasItemFactory.ts` creates canvas items. React state in the editor manages selection, movement, and deletion.
+🚀 Current Features
 
-## [x] Phase 2
+- Visual canvas-based UI editing
+- Hierarchical component tree
+- Nested components
+- Component selection and inspection
+- Editable text and styles
+- Component duplication and deletion
+- Multiple pages
+- Local project persistence
+- Scene/object tree
+- Component factories for predefined UI structures
+- React project export
+- TypeScript + React + Vite based architecture
 
-Added common canvas primitives including containers, sections, inputs, and images, alongside the Phase 1 components. Each component has an editable nested structure: users can select children, change text and Tailwind classes, add children to containers and buttons, or delete children. Buttons contain editable text elements.
+🏗️ Architecture
 
-Use the Inspector to select an element, update its content or classes, choose from common Tailwind utility classes, and manage its child elements. Component structure and styles are modeled separately from the editor UI under `src/core/`.
+Canvas Builder is built around a structured document model rather than storing the UI as raw canvas coordinates.
 
-## [x] Phase 3
+A page contains a recursive tree of UI nodes:
 
-Added page creation, selection, renaming, deletion, and local workspace persistence. The left-side Scene panel provides a node tree, an object picker, and an Inspector for editing styles and position, size, and rotation. New objects are created at the page root or nested under the selected node, and the canvas grows to fit positioned and transformed content.
+Page
+├── Navbar
+├── Hero
+│   ├── Heading
+│   ├── Description
+│   └── Actions
+│       ├── Button
+│       └── Button
+├── Features
+│   ├── Card
+│   ├── Card
+│   └── Card
+└── Footer
 
-React project export downloads a ZIP with generated page components under `src/pages/` and shared rendering components under `src/components/`.
+This structure allows the same representation to power:
+
+- The visual editor
+- The object tree
+- The inspector
+- Persistence
+- Preview rendering
+- React code generation
+
+The architecture is intentionally designed so that the editor can evolve without coupling the visual interface directly to the exported code.
+
+🛠️ Tech Stack
+
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+
+The project aims to remain lightweight and understandable rather than depending on a large visual-editor framework.
+
+🗺️ Roadmap
+
+Editor
+
+- [x] Visual canvas
+- [x] Component tree
+- [x] Nested components
+- [x] Component selection
+- [x] Inspector
+- [x] Multiple pages
+- [x] Local persistence
+- [x] React project export
+- [ ] Advanced object-tree manipulation
+- [ ] Drag-and-drop reordering
+- [ ] Move components between containers
+- [ ] Contextual quick actions
+- [ ] Undo / redo
+
+Layout
+
+- [ ] Flexbox controls
+- [ ] CSS Grid controls
+- [ ] Spacing and alignment controls
+- [ ] Responsive breakpoints
+- [ ] Responsive preview
+- [ ] Better layout-aware editing
+
+Components
+
+- [ ] Forms and inputs
+- [ ] Images and media
+- [ ] Links
+- [ ] Lists
+- [ ] Reusable components
+- [ ] Component customization
+
+Code Generation
+
+- [x] React project export
+- [ ] Cleaner component generation
+- [ ] Automatic component extraction
+- [ ] Asset management
+- [ ] Improved TypeScript generation
+- [ ] More maintainable generated code
+
+Future: Interactions
+
+A long-term goal is to make Canvas Builder more than a static UI designer.
+
+The planned interaction system is inspired by event/signal systems found in game engines such as Godot.
+
+For example:
+
+Button
+   │
+   │ onClick
+   ▼
+API Request
+   │
+   ▼
+JSON Response
+   │
+   ▼
+State / Data
+   │
+   ▼
+UI Components
+
+This could eventually allow users to visually define:
+
+- Events
+- API requests
+- State
+- Data binding
+- Conditions
+- Loading and error states
+- Dynamic UI updates
+
+The interaction system is intentionally planned for a later stage. The current priority is building a solid visual editor and reliable React code-generation pipeline first.
+
+🎯 Philosophy
+
+Canvas Builder is not intended to be another Figma clone.
+
+Its primary goal is to make visual UI development and real frontend development meet in the middle.
+
+A developer should be able to visually construct an interface, inspect its structure, export it, open the generated React project, and continue developing it normally.
+
+Design visually. Own the code.
+
+🤝 Open Source
+
+Canvas Builder is free and open source.
+
+Contributions, ideas, bug reports, and experiments are welcome as the project evolves.
