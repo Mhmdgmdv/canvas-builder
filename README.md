@@ -37,7 +37,7 @@ Canvas Builder is designed to produce code that developers can continue working 
 
 Canvas Builder is built around a structured document model rather than storing the UI as raw canvas coordinates.
 
-A page contains a recursive tree of UI nodes:
+A page contains one recursive tree of nodes. Page-level objects and nested elements use the same node shape:
 
 Page
 ├── Navbar
@@ -53,7 +53,29 @@ Page
 │   └── Card
 └── Footer
 
-This structure allows the same representation to power:
+Every node separates web content from canvas-only editing state:
+
+```ts
+type CanvasNode = {
+  id: number
+  type: ComponentType
+  props: NodeProps
+  styles: NodeStyles
+  layout: NodeLayout
+  editor: EditorMetadata
+  children: CanvasNode[]
+}
+```
+
+- `props` contains semantic component data such as text.
+- `styles` contains visual styling such as Tailwind classes.
+- `layout` is the structured home for CSS layout rules (flow/absolute positioning, flex, grid, spacing, and size constraints) as first-class layout controls are added.
+- `editor` contains canvas coordinates, editor dimensions, and rotation; it does not define the document tree or component properties.
+- `children` expresses structural ownership: a parent owns and arranges its child nodes through its layout.
+
+The current Tailwind class editor remains a low-level CSS escape hatch and can still express layout utilities. New first-class layout controls should update `layout`, not duplicate those values in editor metadata.
+
+This shared representation powers:
 
 - The visual editor
 - The object tree
@@ -63,6 +85,8 @@ This structure allows the same representation to power:
 - React code generation
 
 The architecture is intentionally designed so that the editor can evolve without coupling the visual interface directly to the exported code.
+
+Existing locally saved Phase 3 workspaces are migrated from the previous separate root-item/child-node shape when the new schema is loaded.
 
 🛠️ Tech Stack
 
@@ -82,6 +106,7 @@ Editor
 - [x] Nested components
 - [x] Component selection
 - [x] Inspector
+- [x] Unified node model with separate props, styles, layout, and editor metadata
 - [x] Multiple pages
 - [x] Local persistence
 - [x] React project export

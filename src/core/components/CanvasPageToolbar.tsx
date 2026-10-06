@@ -1,4 +1,4 @@
-import type { CanvasPage } from '../models/canvasItem'
+import type { CanvasPage } from '../models/canvasNode'
 
 type CanvasPageToolbarProps = {
   pages: CanvasPage[]

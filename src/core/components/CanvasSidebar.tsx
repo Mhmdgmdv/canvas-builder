@@ -1,13 +1,13 @@
 import {
   CANVAS_COMPONENTS,
   CANVAS_COMPONENT_TYPES,
-  type CanvasItemType,
-} from '../models/canvasItem'
+  type CanvasComponentType,
+} from '../models/canvasNode'
 
 type CanvasSidebarProps = {
   pageName: string
   onPageNameChange: (name: string) => void
-  onAddComponent: (type: CanvasItemType) => void
+  onAddComponent: (type: CanvasComponentType) => void
   onClearCanvas: () => void
   onDeleteSelected: () => void
 }

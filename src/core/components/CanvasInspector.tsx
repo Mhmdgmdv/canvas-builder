@@ -2,39 +2,31 @@ import { useState } from 'react'
 import {
   CANVAS_COMPONENTS,
   CANVAS_COMPONENT_TYPES,
-  CANVAS_ELEMENT_LABELS,
-  type CanvasElementNode,
-  type CanvasItem,
-  type CanvasItemType,
+  CANVAS_NODE_LABELS,
+  type CanvasNode,
+  type CanvasComponentType,
   type CanvasPage,
-} from '../models/canvasItem'
+} from '../models/canvasNode'
 import { TAILWIND_CLASS_OPTIONS } from '../models/tailwindClassOptions'
 
 type CanvasInspectorProps = {
   page: CanvasPage
-  selectedItem: CanvasItem | null
-  selectedElementId: number | null
-  selectedElement: CanvasElementNode | null
-  canAddElement: boolean
+  selectedNodeId: number | null
+  selectedNode: CanvasNode | null
   onSelectPageRoot: () => void
-  onSelectItem: (itemId: number) => void
-  onSelectElement: (elementId: number) => void
-  onCreateObject: (type: CanvasItemType) => void
-  onChangeText: (elementId: number, text: string) => void
-  onChangeClasses: (elementId: number | null, classes: string) => void
-  onChangeTransform: (
-    elementId: number | null,
-    transform: Partial<Pick<CanvasItem, 'x' | 'y' | 'width' | 'height' | 'rotation'>>,
-  ) => void
-  onDeleteItem: () => void
-  onDeleteElement: (elementId: number) => void
+  onSelectNode: (nodeId: number) => void
+  onCreateObject: (type: CanvasComponentType) => void
+  onChangeText: (text: string) => void
+  onChangeClasses: (classes: string) => void
+  onChangeTransform: (transform: Partial<CanvasNode['editor']>) => void
+  onDeleteSelected: () => void
 }
 
 type StructureTreeProps = {
-  nodes: CanvasElementNode[]
-  selectedElementId: number | null
+  nodes: CanvasNode[]
+  selectedNodeId: number | null
   depth?: number
-  onSelectElement: (elementId: number) => void
+  onSelectNode: (nodeId: number) => void
 }
 
 function getUtilityGroup(utility: string): string | null {
@@ -70,9 +62,9 @@ function getUtilityGroup(utility: string): string | null {
 
 function StructureTree({
   nodes,
-  selectedElementId,
+  selectedNodeId,
   depth = 0,
-  onSelectElement,
+  onSelectNode,
 }: StructureTreeProps) {
   return (
     <ul className="structure-list">
@@ -80,19 +72,19 @@ function StructureTree({
         <li key={node.id}>
           <button
             type="button"
-            className={`structure-item ${selectedElementId === node.id ? 'is-active' : ''}`}
+            className={`structure-item ${selectedNodeId === node.id ? 'is-active' : ''}`}
             style={{ paddingLeft: 10 + depth * 14 }}
-            onClick={() => onSelectElement(node.id)}
+            onClick={() => onSelectNode(node.id)}
           >
-            <span>{CANVAS_ELEMENT_LABELS[node.type]}</span>
-            <small>{node.text || 'Untitled'}</small>
+            <span>{CANVAS_NODE_LABELS[node.type]}</span>
+            <small>{node.props.text || 'Untitled'}</small>
           </button>
           {node.children.length > 0 && (
             <StructureTree
               nodes={node.children}
-              selectedElementId={selectedElementId}
+              selectedNodeId={selectedNodeId}
               depth={depth + 1}
-              onSelectElement={onSelectElement}
+              onSelectNode={onSelectNode}
             />
           )}
         </li>
@@ -140,31 +132,25 @@ function TransformField({
 
 export function CanvasInspector({
   page,
-  selectedItem,
-  selectedElementId,
-  selectedElement,
-  canAddElement,
+  selectedNodeId,
+  selectedNode,
   onSelectPageRoot,
-  onSelectItem,
-  onSelectElement,
+  onSelectNode,
   onCreateObject,
   onChangeText,
   onChangeClasses,
   onChangeTransform,
-  onDeleteItem,
-  onDeleteElement,
+  onDeleteSelected,
 }: CanvasInspectorProps) {
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
   const [utilitySearch, setUtilitySearch] = useState('')
   const [isUtilitySearchOpen, setIsUtilitySearchOpen] = useState(false)
   const [activeUtilityIndex, setActiveUtilityIndex] = useState(0)
-  const selectedObjectName = selectedElement
-    ? CANVAS_ELEMENT_LABELS[selectedElement.type]
-    : selectedItem
-      ? CANVAS_COMPONENTS[selectedItem.type].label
-      : 'Page root'
-  const targetId = selectedElement?.id ?? null
-  const targetClasses = selectedElement?.classes ?? selectedItem?.classes ?? ''
+  const selectedObjectName = selectedNode
+    ? CANVAS_NODE_LABELS[selectedNode.type]
+    : 'Page root'
+  const isRootNode = page.nodes.some((node) => node.id === selectedNodeId)
+  const targetClasses = selectedNode?.styles.classes ?? ''
   const classes = new Set(targetClasses.split(/\s+/).filter(Boolean))
   const matchingUtilities = TAILWIND_CLASS_OPTIONS
     .filter((utility) =>
@@ -172,10 +158,11 @@ export function CanvasInspector({
     )
     .slice(0, 30)
   const canEditText =
-    selectedElement !== null &&
-    selectedElement.type !== 'container' &&
-    selectedElement.type !== 'divider' &&
-    !(selectedElement.type === 'button' && selectedElement.children.length > 0)
+    selectedNode !== null &&
+    !isRootNode &&
+    selectedNode.type !== 'container' &&
+    selectedNode.type !== 'divider' &&
+    !(selectedNode.type === 'button' && selectedNode.children.length > 0)
 
   const toggleClass = (utility: string) => {
     const updatedClasses = new Set(
@@ -195,7 +182,7 @@ export function CanvasInspector({
       updatedClasses.add(utility)
     }
 
-    onChangeClasses(targetId, [...updatedClasses].join(' '))
+    onChangeClasses([...updatedClasses].join(' '))
   }
 
   const selectUtility = (utility: string) => {
@@ -205,7 +192,7 @@ export function CanvasInspector({
     setIsUtilitySearchOpen(false)
   }
 
-  const createObject = (type: CanvasItemType) => {
+  const createObject = (type: CanvasComponentType) => {
     onCreateObject(type)
     setIsCreateMenuOpen(false)
   }
@@ -233,16 +220,12 @@ export function CanvasInspector({
               <button
                 type="button"
                 key={type}
-                disabled={selectedItem !== null && !canAddElement}
                 onClick={() => createObject(type)}
               >
                 <span>{CANVAS_COMPONENTS[type].label}</span>
                 <small>{CANVAS_COMPONENTS[type].description}</small>
               </button>
             ))}
-            {selectedItem !== null && !canAddElement && (
-              <p>Select a container or button node to add a child.</p>
-            )}
           </div>
         )}
       </section>
@@ -251,34 +234,33 @@ export function CanvasInspector({
         <h3>Scene tree</h3>
         <button
           type="button"
-          className={`structure-item root-structure-item ${selectedItem === null ? 'is-active' : ''}`}
+          className={`structure-item root-structure-item ${selectedNodeId === null ? 'is-active' : ''}`}
           onClick={onSelectPageRoot}
         >
           <span>Page · {page.name}</span>
           <small>Root</small>
         </button>
         <ul className="structure-list">
-          {page.items.map((item) => (
+          {page.nodes.map((item) => (
             <li key={item.id}>
               <button
                 type="button"
-                className={`structure-item root-structure-item ${selectedItem?.id === item.id && selectedElementId === null ? 'is-active' : ''}`}
-                onClick={() => onSelectItem(item.id)}
+                className={`structure-item root-structure-item ${selectedNodeId === item.id ? 'is-active' : ''}`}
+                onClick={() => onSelectNode(item.id)}
               >
                 <span>{CANVAS_COMPONENTS[item.type].label}</span>
-                <small>{item.width} × {item.height} · {item.rotation}°</small>
+                <small>
+                  {item.editor.width ?? CANVAS_COMPONENTS[item.type].width} ×{' '}
+                  {item.editor.height ?? CANVAS_COMPONENTS[item.type].height} ·{' '}
+                  {item.editor.rotation ?? 0}°
+                </small>
               </button>
               {item.children.length > 0 && (
                 <StructureTree
                   nodes={item.children}
-                  selectedElementId={
-                    selectedItem?.id === item.id ? selectedElementId : null
-                  }
+                  selectedNodeId={selectedNodeId}
                   depth={1}
-                  onSelectElement={(elementId) => {
-                    onSelectItem(item.id)
-                    onSelectElement(elementId)
-                  }}
+                  onSelectNode={onSelectNode}
                 />
               )}
             </li>
@@ -293,116 +275,67 @@ export function CanvasInspector({
         <h3>Inspector · {selectedObjectName}</h3>
       </div>
       <section className="inspector-section properties-section">
-        {selectedItem ? (
+        {selectedNode ? (
           <>
-            {selectedElement ? (
-              canEditText ? (
+            {canEditText ? (
                 <label className="inspector-field">
                   <span>
-                    {selectedElement.type === 'input'
+                    {selectedNode.type === 'input'
                       ? 'Placeholder'
-                      : selectedElement.type === 'image'
+                      : selectedNode.type === 'image'
                         ? 'Image label'
-                        : selectedElement.type === 'icon'
+                        : selectedNode.type === 'icon'
                           ? 'Icon content'
                           : 'Text content'}
                   </span>
                   <input
                     type="text"
-                    value={selectedElement.text}
-                    onChange={(event) =>
-                      onChangeText(selectedElement.id, event.target.value)
-                    }
+                    value={selectedNode.props.text}
+                    onChange={(event) => onChangeText(event.target.value)}
                   />
                 </label>
               ) : (
                 <p className="inspector-hint">
-                  {selectedElement.type === 'button'
+                  {isRootNode
+                    ? 'This canvas object is a positioning frame. Select one of its child nodes to edit content.'
+                    : selectedNode.type === 'button'
                     ? 'Button content is nested. Select its text or icon child to edit it.'
                     : 'This node has no text content. Its child objects and styles remain editable.'}
                 </p>
-              )
-            ) : (
-              <div className="transform-grid">
+              )}
+            <div className="transform-grid">
                 <TransformField
                   label="X"
-                  value={selectedItem.x}
+                  value={selectedNode.editor.x}
                   min={0}
-                  onChange={(x) => onChangeTransform(null, { x })}
+                  onChange={(x) => onChangeTransform({ x })}
                 />
                 <TransformField
                   label="Y"
-                  value={selectedItem.y}
+                  value={selectedNode.editor.y}
                   min={0}
-                  onChange={(y) => onChangeTransform(null, { y })}
+                  onChange={(y) => onChangeTransform({ y })}
                 />
                 <TransformField
                   label="Width"
-                  value={selectedItem.width}
+                  value={selectedNode.editor.width}
                   min={32}
-                  onChange={(width) => onChangeTransform(null, { width })}
+                  onChange={(width) => onChangeTransform({ width })}
                 />
                 <TransformField
                   label="Height"
-                  value={selectedItem.height}
+                  value={selectedNode.editor.height}
                   min={24}
-                  onChange={(height) => onChangeTransform(null, { height })}
+                  onChange={(height) => onChangeTransform({ height })}
                 />
                 <TransformField
                   label="Rotation"
-                  value={selectedItem.rotation}
+                  value={selectedNode.editor.rotation}
                   min={-360}
                   max={360}
-                  onChange={(rotation) => onChangeTransform(null, { rotation })}
+                  onChange={(rotation) => onChangeTransform({ rotation })}
                 />
               </div>
-            )}
-
-            {selectedElement && (
-              <div className="transform-grid">
-                <TransformField
-                  label="X"
-                  value={selectedElement.x}
-                  min={0}
-                  onChange={(x) =>
-                    onChangeTransform(selectedElement.id, { x })
-                  }
-                />
-                <TransformField
-                  label="Y"
-                  value={selectedElement.y}
-                  min={0}
-                  onChange={(y) =>
-                    onChangeTransform(selectedElement.id, { y })
-                  }
-                />
-                <TransformField
-                  label="Width"
-                  value={selectedElement.width}
-                  min={32}
-                  onChange={(width) =>
-                    onChangeTransform(selectedElement.id, { width })
-                  }
-                />
-                <TransformField
-                  label="Height"
-                  value={selectedElement.height}
-                  min={24}
-                  onChange={(height) =>
-                    onChangeTransform(selectedElement.id, { height })
-                  }
-                />
-                <TransformField
-                  label="Rotation"
-                  value={selectedElement.rotation}
-                  min={-360}
-                  max={360}
-                  onChange={(rotation) =>
-                    onChangeTransform(selectedElement.id, { rotation })
-                  }
-                />
-              </div>
-            )}
 
             <label className="inspector-field">
               <span>Tailwind classes</span>
@@ -410,7 +343,7 @@ export function CanvasInspector({
                 rows={3}
                 value={targetClasses}
                 onChange={(event) =>
-                  onChangeClasses(targetId, event.target.value)
+                  onChangeClasses(event.target.value)
                 }
                 spellCheck={false}
               />
@@ -502,23 +435,13 @@ export function CanvasInspector({
               )}
             </div>
 
-            {selectedElement ? (
-              <button
-                type="button"
-                className="delete-element-button"
-                onClick={() => onDeleteElement(selectedElement.id)}
-              >
-                Delete node
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="delete-element-button"
-                onClick={onDeleteItem}
-              >
-                Delete object
-              </button>
-            )}
+            <button
+              type="button"
+              className="delete-element-button"
+              onClick={onDeleteSelected}
+            >
+              Delete node
+            </button>
           </>
         ) : (
           <p className="inspector-hint">

@@ -1,26 +1,25 @@
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
-import type { CanvasItem } from '../models/canvasItem'
+import type { CanvasNode } from '../models/canvasNode'
 import type { CanvasPageSize } from '../services/CanvasPageLayout'
-import { CanvasItemContent } from './CanvasItemContent'
+import { getCanvasNodeLayoutStyle } from '../services/CanvasNodeLayout'
+import { CanvasNodeChildren } from './CanvasNodeChildren'
 
 type CanvasStageProps = {
-  items: CanvasItem[]
-  selectedId: number | null
-  selectedElementId: number | null
+  nodes: CanvasNode[]
+  selectedNodeId: number | null
   stageRef: RefObject<HTMLDivElement | null>
   pageSize: CanvasPageSize
-  onItemPointerDown: (item: CanvasItem, event: ReactPointerEvent<HTMLDivElement>) => void
-  onSelectElement: (itemId: number, elementId: number) => void
+  onRootNodePointerDown: (node: CanvasNode, event: ReactPointerEvent<HTMLDivElement>) => void
+  onSelectNode: (nodeId: number) => void
 }
 
 export function CanvasStage({
-  items,
-  selectedId,
-  selectedElementId,
+  nodes,
+  selectedNodeId,
   stageRef,
   pageSize,
-  onItemPointerDown,
-  onSelectElement,
+  onRootNodePointerDown,
+  onSelectNode,
 }: CanvasStageProps) {
   return (
     <div
@@ -28,31 +27,38 @@ export function CanvasStage({
       ref={stageRef}
       style={{ width: pageSize.width, height: pageSize.height }}
     >
-      {items.length === 0 && (
+      {nodes.length === 0 && (
         <div className="empty-state">
           Start by picking a component and place it on the canvas.
         </div>
       )}
 
-      {items.map((item) => (
+      {nodes.map((node) => (
         <div
-          key={item.id}
-          className={`canvas-node ${selectedId === item.id ? 'is-selected' : ''}`}
+          key={node.id}
+          className={`canvas-node ${selectedNodeId === node.id ? 'is-selected' : ''}`}
           style={{
-            left: item.x,
-            top: item.y,
-            width: item.width,
-            height: item.height,
-            transform: `rotate(${item.rotation}deg)`,
+            left: node.editor.x,
+            top: node.editor.y,
+            width: node.editor.width,
+            height: node.editor.height,
+            transform: `rotate(${node.editor.rotation ?? 0}deg)`,
             transformOrigin: 'center center',
           }}
-          onPointerDown={(event) => onItemPointerDown(item, event)}
+          onPointerDown={(event) => onRootNodePointerDown(node, event)}
         >
-          <div className={item.classes} style={{ width: '100%', height: '100%' }}>
-            <CanvasItemContent
-              nodes={item.children}
-              selectedElementId={selectedId === item.id ? selectedElementId : null}
-              onSelectElement={(elementId) => onSelectElement(item.id, elementId)}
+          <div
+            className={node.styles.classes}
+            style={{
+              width: '100%',
+              height: '100%',
+              ...getCanvasNodeLayoutStyle(node.layout),
+            }}
+          >
+            <CanvasNodeChildren
+              nodes={node.children}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={onSelectNode}
             />
           </div>
         </div>

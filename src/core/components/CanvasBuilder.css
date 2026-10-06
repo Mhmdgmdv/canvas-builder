@@ -336,16 +336,16 @@
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
 }
 
-.canvas-item-body {
+.canvas-node-children {
   display: contents;
 }
 
-.canvas-element-frame {
+.canvas-node-frame {
   display: inline-block;
   vertical-align: top;
 }
 
-.canvas-element-selected {
+.canvas-node-selected {
   outline: 2px solid #6366f1;
   outline-offset: 2px;
 }

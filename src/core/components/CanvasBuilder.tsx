@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { CanvasItemFactory } from '../factories/CanvasItemFactory'
+import { CanvasNodeFactory } from '../factories/CanvasNodeFactory'
 import type {
-  CanvasElementNode,
-  CanvasItem,
-  CanvasItemType,
+  CanvasNode,
+  CanvasComponentType,
   CanvasPage,
-} from '../models/canvasItem'
+} from '../models/canvasNode'
 import { CanvasInspector } from './CanvasInspector'
 import { CanvasPageToolbar } from './CanvasPageToolbar'
 import { CanvasStage } from './CanvasStage'
@@ -23,16 +22,16 @@ type ActiveDrag = {
   originY: number
 }
 
-function findElement(
-  nodes: CanvasElementNode[],
+function findNode(
+  nodes: CanvasNode[],
   targetId: number,
-): CanvasElementNode | null {
+): CanvasNode | null {
   for (const node of nodes) {
     if (node.id === targetId) {
       return node
     }
 
-    const match = findElement(node.children, targetId)
+    const match = findNode(node.children, targetId)
     if (match) {
       return match
     }
@@ -41,63 +40,62 @@ function findElement(
   return null
 }
 
-function updateElement(
-  nodes: CanvasElementNode[],
+function updateNode(
+  nodes: CanvasNode[],
   targetId: number,
-  update: (node: CanvasElementNode) => CanvasElementNode,
-): CanvasElementNode[] {
+  update: (node: CanvasNode) => CanvasNode,
+): CanvasNode[] {
   return nodes.map((node) =>
     node.id === targetId
       ? update(node)
-      : { ...node, children: updateElement(node.children, targetId, update) },
+      : { ...node, children: updateNode(node.children, targetId, update) },
   )
 }
 
-function appendElement(
-  nodes: CanvasElementNode[],
+function appendNode(
+  nodes: CanvasNode[],
   targetId: number,
-  child: CanvasElementNode,
-): CanvasElementNode[] {
+  child: CanvasNode,
+): CanvasNode[] {
   return nodes.map((node) =>
     node.id === targetId
       ? { ...node, children: [...node.children, child] }
-      : { ...node, children: appendElement(node.children, targetId, child) },
+      : { ...node, children: appendNode(node.children, targetId, child) },
   )
 }
 
-function removeElement(
-  nodes: CanvasElementNode[],
+function removeNode(
+  nodes: CanvasNode[],
   targetId: number,
-): CanvasElementNode[] {
+): CanvasNode[] {
   return nodes
     .filter((node) => node.id !== targetId)
     .map((node) => ({
       ...node,
-      children: removeElement(node.children, targetId),
+      children: removeNode(node.children, targetId),
     }))
 }
 
-function updateItemInPages(
+function updateNodesInPages(
   pages: CanvasPage[],
   pageId: string,
-  update: (items: CanvasItem[]) => CanvasItem[],
+  update: (nodes: CanvasNode[]) => CanvasNode[],
 ): CanvasPage[] {
   return pages.map((page) =>
-    page.id === pageId ? { ...page, items: update(page.items) } : page,
+    page.id === pageId ? { ...page, nodes: update(page.nodes) } : page,
   )
 }
 
 export function CanvasBuilder() {
   const [storage] = useState(() => new CanvasWorkspaceStorage())
   const [workspace, setWorkspace] = useState(() => storage.load())
-  const [itemFactory] = useState(() => {
-    const factory = new CanvasItemFactory()
+  const [nodeFactory] = useState(() => {
+    const factory = new CanvasNodeFactory()
     factory.reserveIds(workspace.pages)
     return factory
   })
   const [projectExporter] = useState(() => new ReactProjectExporter())
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [selectedElementId, setSelectedElementId] = useState<number | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [minimumPageWidth, setMinimumPageWidth] = useState(320)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -105,14 +103,9 @@ export function CanvasBuilder() {
   const activePage =
     workspace.pages.find((page) => page.id === workspace.activePageId) ??
     workspace.pages[0]
-  const selectedItem =
-    activePage.items.find((item) => item.id === selectedId) ?? null
-  const selectedElement =
-    selectedItem && selectedElementId !== null
-      ? findElement(selectedItem.children, selectedElementId)
-      : null
-  const canAddElement = selectedItem !== null
-  const pageSize = getCanvasPageSize(activePage.items, minimumPageWidth)
+  const selectedNode =
+    selectedNodeId === null ? null : findNode(activePage.nodes, selectedNodeId)
+  const pageSize = getCanvasPageSize(activePage.nodes, minimumPageWidth)
 
   useEffect(() => {
     storage.save(workspace)
@@ -149,15 +142,18 @@ export function CanvasBuilder() {
 
       setWorkspace((current) => ({
         ...current,
-        pages: updateItemInPages(current.pages, current.activePageId, (items) =>
-          items.map((item) =>
-            item.id === activeDrag.id
+        pages: updateNodesInPages(current.pages, current.activePageId, (nodes) =>
+          nodes.map((node) =>
+            node.id === activeDrag.id
               ? {
-                  ...item,
-                  x: Math.min(Math.max(activeDrag.originX + deltaX, 16), 50000),
-                  y: Math.min(Math.max(activeDrag.originY + deltaY, 16), 50000),
+                  ...node,
+                  editor: {
+                    ...node.editor,
+                    x: Math.min(Math.max(activeDrag.originX + deltaX, 16), 50000),
+                    y: Math.min(Math.max(activeDrag.originY + deltaY, 16), 50000),
+                  },
                 }
-              : item,
+              : node,
           ),
         ),
       }))
@@ -178,8 +174,7 @@ export function CanvasBuilder() {
 
   const selectPage = (pageId: string) => {
     setWorkspace((current) => ({ ...current, activePageId: pageId }))
-    setSelectedId(null)
-    setSelectedElementId(null)
+    setSelectedNodeId(null)
   }
 
   const createPage = () => {
@@ -187,15 +182,14 @@ export function CanvasBuilder() {
     const page: CanvasPage = {
       id: crypto.randomUUID(),
       name: `Page ${pageNumber}`,
-      items: [],
+      nodes: [],
     }
 
     setWorkspace((current) => ({
       pages: [...current.pages, page],
       activePageId: page.id,
     }))
-    setSelectedId(null)
-    setSelectedElementId(null)
+    setSelectedNodeId(null)
   }
 
   const renamePage = (name: string) => {
@@ -222,16 +216,15 @@ export function CanvasBuilder() {
     )
     const nextPage = pages[Math.max(0, activeIndex - 1)]
     setWorkspace({ pages, activePageId: nextPage.id })
-    setSelectedId(null)
-    setSelectedElementId(null)
+    setSelectedNodeId(null)
   }
 
-  const updateActiveItems = (
-    update: (items: CanvasItem[]) => CanvasItem[],
+  const updateActiveNodes = (
+    update: (nodes: CanvasNode[]) => CanvasNode[],
   ) => {
     setWorkspace((current) => ({
       ...current,
-      pages: updateItemInPages(
+      pages: updateNodesInPages(
         current.pages,
         current.activePageId,
         update,
@@ -239,58 +232,46 @@ export function CanvasBuilder() {
     }))
   }
 
-  const createObject = (type: CanvasItemType) => {
-    if (selectedItem) {
-      const child = itemFactory.createElement(type)
-      updateActiveItems((items) =>
-        items.map((item) => {
-          if (item.id !== selectedItem.id) {
-            return item
-          }
-
-          const children =
-            selectedElementId === null
-              ? [...item.children, child]
-              : appendElement(item.children, selectedElementId, child)
-
-          return { ...item, children }
-        }),
+  const createObject = (type: CanvasComponentType) => {
+    if (selectedNodeId !== null) {
+      const child = nodeFactory.createChild(type)
+      updateActiveNodes((nodes) =>
+        appendNode(nodes, selectedNodeId, child),
       )
-      setSelectedElementId(child.id)
+      setSelectedNodeId(child.id)
       return
     }
 
     const viewportWidth = viewportRef.current?.clientWidth ?? minimumPageWidth
-    const item = itemFactory.create(type, activePage.items.length, {
+    const item = nodeFactory.createRoot(type, activePage.nodes.length, {
       width: viewportWidth,
       height: pageSize.height,
     })
-    updateActiveItems((items) => [...items, item])
-    setSelectedId(item.id)
-    setSelectedElementId(null)
+    updateActiveNodes((nodes) => [...nodes, item])
+    setSelectedNodeId(item.id)
   }
 
-  const deleteSelectedItem = () => {
-    if (selectedId === null) {
+  const deleteSelectedNode = () => {
+    if (selectedNodeId === null) {
       return
     }
 
-    updateActiveItems((items) => items.filter((item) => item.id !== selectedId))
-    setSelectedId(null)
-    setSelectedElementId(null)
+    updateActiveNodes((nodes) => removeNode(nodes, selectedNodeId))
+    setSelectedNodeId(null)
   }
 
-  const startDraggingItem = (
-    item: CanvasItem,
+  const startDraggingRootNode = (
+    item: CanvasNode,
     event: ReactPointerEvent<HTMLDivElement>,
   ) => {
     event.preventDefault()
-    setSelectedId(item.id)
-    const selectedElement = event.target instanceof Element
-      ? event.target.closest<HTMLElement>('[data-canvas-element-id]')
+    const selectedCanvasNode = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('[data-canvas-node-id]')
       : null
-    setSelectedElementId(
-      selectedElement ? Number(selectedElement.dataset.canvasElementId) : null,
+    setSelectedNodeId(
+      selectedCanvasNode
+        ? Number(selectedCanvasNode.dataset.canvasNodeId)
+        : item.id,
     )
 
     const stageRect = stageRef.current?.getBoundingClientRect()
@@ -298,123 +279,62 @@ export function CanvasBuilder() {
       id: item.id,
       startX: stageRect ? event.clientX - stageRect.left : event.clientX,
       startY: stageRect ? event.clientY - stageRect.top : event.clientY,
-      originX: item.x,
-      originY: item.y,
+      originX: item.editor.x ?? 0,
+      originY: item.editor.y ?? 0,
     }
   }
 
-  const changeElementText = (elementId: number, text: string) => {
-    if (selectedId === null) {
+  const changeSelectedText = (text: string) => {
+    if (selectedNodeId === null) {
       return
     }
 
-    updateActiveItems((items) =>
-      items.map((item) =>
-        item.id === selectedId
-          ? {
-              ...item,
-              children: updateElement(item.children, elementId, (node) => ({
-                ...node,
-                text,
-              })),
-            }
-          : item,
-      ),
+    updateActiveNodes((nodes) =>
+      updateNode(nodes, selectedNodeId, (node) => ({
+        ...node,
+        props: { ...node.props, text },
+      })),
     )
   }
 
-  const changeElementClasses = (
-    elementId: number | null,
-    classes: string,
-  ) => {
-    if (selectedId === null) {
+  const changeSelectedClasses = (classes: string) => {
+    if (selectedNodeId === null) {
       return
     }
 
-    updateActiveItems((items) =>
-      items.map((item) => {
-        if (item.id !== selectedId) {
-          return item
-        }
-
-        return elementId === null
-          ? { ...item, classes }
-          : {
-              ...item,
-              children: updateElement(item.children, elementId, (node) => ({
-                ...node,
-                classes,
-              })),
-            }
-      }),
+    updateActiveNodes((nodes) =>
+      updateNode(nodes, selectedNodeId, (node) => ({
+        ...node,
+        styles: { ...node.styles, classes },
+      })),
     )
   }
 
-  const changeTransform = (
-    elementId: number | null,
+  const changeSelectedTransform = (
     transform: Partial<
-      Pick<CanvasItem, 'x' | 'y' | 'width' | 'height' | 'rotation'>
+      Pick<CanvasNode['editor'], 'x' | 'y' | 'width' | 'height' | 'rotation'>
     >,
   ) => {
-    if (selectedId === null) {
+    if (selectedNodeId === null) {
       return
     }
 
-    updateActiveItems((items) =>
-      items.map((item) => {
-        if (item.id !== selectedId) {
-          return item
-        }
-
-        if (elementId !== null) {
-          return {
-            ...item,
-            children: updateElement(item.children, elementId, (node) => {
-              const updated = { ...node, ...transform }
-              if (transform.x !== undefined) updated.x = Math.min(Math.max(transform.x, 0), 50000)
-              if (transform.y !== undefined) updated.y = Math.min(Math.max(transform.y, 0), 50000)
-              if (transform.width !== undefined) updated.width = Math.min(Math.max(transform.width, 32), 5000)
-              if (transform.height !== undefined) updated.height = Math.min(Math.max(transform.height, 24), 5000)
-              if (transform.rotation !== undefined) updated.rotation = Math.min(Math.max(transform.rotation, -360), 360)
-              if ('x' in transform && transform.x === undefined) delete updated.x
-              if ('y' in transform && transform.y === undefined) delete updated.y
-              if ('width' in transform && transform.width === undefined) delete updated.width
-              if ('height' in transform && transform.height === undefined) delete updated.height
-              if ('rotation' in transform && transform.rotation === undefined) delete updated.rotation
-              return updated
-            }),
-          }
-        }
-
-        return {
-          ...item,
-          ...transform,
-          x: Math.min(Math.max(transform.x ?? item.x, 0), 50000),
-          y: Math.min(Math.max(transform.y ?? item.y, 0), 50000),
-          width: Math.min(Math.max(transform.width ?? item.width, 32), 5000),
-          height: Math.min(Math.max(transform.height ?? item.height, 24), 5000),
-          rotation: Math.min(
-            Math.max(transform.rotation ?? item.rotation, -360),
-            360,
-          ),
-        }
+    updateActiveNodes((nodes) =>
+      updateNode(nodes, selectedNodeId, (node) => {
+        const editor = { ...node.editor, ...transform }
+        if (transform.x !== undefined) editor.x = Math.min(Math.max(transform.x, 0), 50000)
+        if (transform.y !== undefined) editor.y = Math.min(Math.max(transform.y, 0), 50000)
+        if (transform.width !== undefined) editor.width = Math.min(Math.max(transform.width, 32), 5000)
+        if (transform.height !== undefined) editor.height = Math.min(Math.max(transform.height, 24), 5000)
+        if (transform.rotation !== undefined) editor.rotation = Math.min(Math.max(transform.rotation, -360), 360)
+        if ('x' in transform && transform.x === undefined) delete editor.x
+        if ('y' in transform && transform.y === undefined) delete editor.y
+        if ('width' in transform && transform.width === undefined) delete editor.width
+        if ('height' in transform && transform.height === undefined) delete editor.height
+        if ('rotation' in transform && transform.rotation === undefined) delete editor.rotation
+        return { ...node, editor }
       }),
     )
-  }
-
-  const deleteElement = (elementId: number) => {
-    if (selectedId === null) {
-      return
-    }
-
-    updateActiveItems((items) =>
-      items.map((item) =>
-        item.id === selectedId
-          ? { ...item, children: removeElement(item.children, elementId) }
-          : item,
-      ),
-    )
-    setSelectedElementId(null)
   }
 
   const exportProject = () => {
@@ -447,25 +367,17 @@ export function CanvasBuilder() {
       <div className="editor-layout">
         <CanvasInspector
           page={activePage}
-          selectedItem={selectedItem}
-          selectedElementId={selectedElementId}
-          selectedElement={selectedElement}
-          canAddElement={canAddElement}
+          selectedNodeId={selectedNodeId}
+          selectedNode={selectedNode}
           onSelectPageRoot={() => {
-            setSelectedId(null)
-            setSelectedElementId(null)
+            setSelectedNodeId(null)
           }}
-          onSelectItem={(itemId) => {
-            setSelectedId(itemId)
-            setSelectedElementId(null)
-          }}
-          onSelectElement={setSelectedElementId}
+          onSelectNode={setSelectedNodeId}
           onCreateObject={createObject}
-          onChangeText={changeElementText}
-          onChangeClasses={changeElementClasses}
-          onChangeTransform={changeTransform}
-          onDeleteItem={deleteSelectedItem}
-          onDeleteElement={deleteElement}
+          onChangeText={changeSelectedText}
+          onChangeClasses={changeSelectedClasses}
+          onChangeTransform={changeSelectedTransform}
+          onDeleteSelected={deleteSelectedNode}
         />
 
         <main className="canvas-panel">
@@ -475,22 +387,18 @@ export function CanvasBuilder() {
               <h1>{activePage.name}</h1>
             </div>
             <span className="counter-badge">
-              {activePage.items.length} object(s)
+              {activePage.nodes.length} object(s)
             </span>
           </header>
 
           <div className="canvas-viewport" ref={viewportRef}>
             <CanvasStage
-              items={activePage.items}
-              selectedId={selectedId}
-              selectedElementId={selectedElementId}
+              nodes={activePage.nodes}
+              selectedNodeId={selectedNodeId}
               stageRef={stageRef}
               pageSize={pageSize}
-              onItemPointerDown={startDraggingItem}
-              onSelectElement={(itemId, elementId) => {
-                setSelectedId(itemId)
-                setSelectedElementId(elementId)
-              }}
+              onRootNodePointerDown={startDraggingRootNode}
+              onSelectNode={setSelectedNodeId}
             />
           </div>
         </main>

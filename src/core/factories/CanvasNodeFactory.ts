@@ -1,17 +1,12 @@
 import {
   CANVAS_COMPONENTS,
-  type CanvasElementNode,
-  type CanvasElementType,
-  type CanvasItem,
-  type CanvasItemType,
+  type CanvasComponentType,
+  type CanvasNode,
   type CanvasPage,
   type CanvasSize,
-} from '../models/canvasItem'
+} from '../models/canvasNode'
 
-const elementDefaults: Record<
-  CanvasElementType,
-  { text: string; classes: string }
-> = {
+const nodeDefaults: Record<CanvasComponentType, { text: string; classes: string }> = {
   container: {
     text: '',
     classes: 'flex flex-col gap-2 p-4 bg-slate-50 rounded-lg',
@@ -58,76 +53,85 @@ const elementDefaults: Record<
   },
 }
 
-export class CanvasItemFactory {
+export class CanvasNodeFactory {
   private nextId = 1
 
   reserveIds(pages: CanvasPage[]): void {
-    const findMaxId = (nodes: CanvasElementNode[]): number =>
+    const findMaxId = (nodes: CanvasNode[]): number =>
       nodes.reduce(
         (maxId, node) => Math.max(maxId, node.id, findMaxId(node.children)),
         0,
       )
     const maxId = pages.reduce(
-      (pageMax, page) =>
-        Math.max(
-          pageMax,
-          ...page.items.map((item) =>
-            Math.max(item.id, findMaxId(item.children)),
-          ),
-        ),
+      (pageMax, page) => Math.max(pageMax, findMaxId(page.nodes)),
       0,
     )
 
     this.nextId = Math.max(this.nextId, maxId + 1)
   }
 
-  create(type: CanvasItemType, itemCount: number, canvas: CanvasSize): CanvasItem {
+  createRoot(type: CanvasComponentType, nodeCount: number, canvas: CanvasSize): CanvasNode {
     const component = CANVAS_COMPONENTS[type]
     const width = Math.min(component.width, Math.max(200, canvas.width - 32))
     const maxX = Math.max(16, canvas.width - width - 16)
     const maxY = Math.max(16, canvas.height - component.height - 16)
-    const itemId = this.nextId
-    this.nextId += 1
-    const item: CanvasItem = {
-      id: itemId,
-      type,
-      x: Math.min(24 + (itemCount % 3) * 52, maxX),
-      y: Math.min(24 + (itemCount % 4) * 44, maxY),
-      width,
-      height: component.height,
-      rotation: 0,
-      classes: this.getRootClasses(type),
-      children: this.createDefaultChildren(type),
-    }
 
-    return item
+    const node = this.createNode(
+      type,
+      { position: 'absolute' },
+      {
+        x: Math.min(24 + (nodeCount % 3) * 52, maxX),
+        y: Math.min(24 + (nodeCount % 4) * 44, maxY),
+        width,
+        height: component.height,
+        rotation: 0,
+      },
+      this.createDefaultChildren(type),
+      '',
+    )
+    return node
   }
 
-  createElement(type: CanvasElementType): CanvasElementNode {
-    const defaults = elementDefaults[type]
+  createChild(type: CanvasComponentType): CanvasNode {
+    const defaults = nodeDefaults[type]
     if (type === 'header' || type === 'hero' || type === 'card' || type === 'section') {
-      return this.node(
+      return this.createNode(
         type,
-        '',
-        this.getRootClasses(type),
+        { position: 'flow' },
+        {},
         this.createDefaultChildren(type),
+        '',
       )
     }
-
     if (type === 'button') {
-      return this.button(defaults.text, defaults.classes)
+      return this.node(type, '', defaults.classes, [
+        this.node('text', defaults.text, 'text-sm font-semibold'),
+      ])
     }
+    return this.node(type, defaults.text, defaults.classes)
+  }
+
+  private createNode(
+    type: CanvasComponentType,
+    layout: CanvasNode['layout'],
+    editor: CanvasNode['editor'],
+    children: CanvasNode[],
+    text: string,
+  ): CanvasNode {
+    const id = this.nextId++
 
     return {
-      id: this.nextId++,
+      id,
       type,
-      text: defaults.text,
-      classes: defaults.classes,
-      children: [],
+      props: { text },
+      styles: { classes: this.getRootClasses(type) },
+      layout,
+      editor,
+      children,
     }
   }
 
-  private createDefaultChildren(type: CanvasItemType): CanvasElementNode[] {
+  private createDefaultChildren(type: CanvasComponentType): CanvasNode[] {
     switch (type) {
       case 'header':
         return [
@@ -201,32 +205,32 @@ export class CanvasItemFactory {
           this.node('text', 'Add a description for this section.', 'text-base text-slate-600'),
         ]
       case 'input':
-        return [this.node('input', 'Your name', elementDefaults.input.classes)]
+        return [this.node('input', 'Your name', nodeDefaults.input.classes)]
       case 'image':
-        return [this.node('image', 'Image placeholder', elementDefaults.image.classes)]
+        return [this.node('image', 'Image placeholder', nodeDefaults.image.classes)]
       case 'icon':
-        return [this.node('icon', '✦', elementDefaults.icon.classes)]
+        return [this.node('icon', '✦', nodeDefaults.icon.classes)]
       case 'divider':
-        return [this.node('divider', '', elementDefaults.divider.classes)]
+        return [this.node('divider', '', nodeDefaults.divider.classes)]
     }
   }
 
-  private getRootClasses(type: CanvasItemType): string {
+  private getRootClasses(type: CanvasComponentType): string {
     switch (type) {
       case 'header':
-        return 'flex flex-row items-center justify-between gap-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm'
+        return nodeDefaults.header.classes
       case 'hero':
-        return 'flex flex-col justify-center gap-3 p-6 bg-blue-50 rounded-2xl border border-blue-300'
+        return nodeDefaults.hero.classes
       case 'text':
         return 'flex flex-col gap-2 p-4 bg-white rounded-xl border border-slate-200'
       case 'button':
         return 'flex items-center justify-center p-2 bg-white rounded-xl'
       case 'card':
-        return 'flex flex-row items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm'
+        return nodeDefaults.card.classes
       case 'container':
         return 'flex flex-col gap-2 p-4 bg-white rounded-xl border border-slate-200'
       case 'section':
-        return 'flex flex-col gap-3 p-6 bg-slate-50 rounded-2xl'
+        return nodeDefaults.section.classes
       case 'input':
         return 'flex items-center p-2 bg-white rounded-xl'
       case 'image':
@@ -239,21 +243,23 @@ export class CanvasItemFactory {
   }
 
   private node(
-    type: CanvasElementType,
+    type: CanvasComponentType,
     text: string,
     classes: string,
-    children: CanvasElementNode[] = [],
-  ): CanvasElementNode {
+    children: CanvasNode[] = [],
+  ): CanvasNode {
     return {
       id: this.nextId++,
       type,
-      text,
-      classes,
+      props: { text },
+      styles: { classes },
+      layout: { position: 'flow' },
+      editor: {},
       children,
     }
   }
 
-  private button(text: string, classes: string): CanvasElementNode {
+  private button(text: string, classes: string): CanvasNode {
     return this.node('button', '', classes, [
       this.node('text', text, 'text-sm font-semibold'),
     ])

@@ -1,4 +1,4 @@
-export type CanvasItemType =
+export type CanvasNodeType =
   | 'header'
   | 'hero'
   | 'text'
@@ -11,37 +11,64 @@ export type CanvasItemType =
   | 'icon'
   | 'divider'
 
-export type CanvasElementType = CanvasItemType
-
-export type CanvasElementNode = {
-  id: number
-  type: CanvasElementType
+export type CanvasNodeProps = {
   text: string
+}
+
+export type CanvasNodeStyles = {
   classes: string
+}
+
+export type CanvasNodeLayout = {
+  display?: 'block' | 'flex' | 'grid' | 'inline' | 'inline-flex'
+  position?: 'flow' | 'absolute'
+  flexDirection?: 'row' | 'column' | 'row-reverse' | 'column-reverse'
+  flexWrap?: 'nowrap' | 'wrap' | 'wrap-reverse'
+  alignItems?: 'start' | 'center' | 'end' | 'stretch' | 'baseline'
+  justifyContent?:
+    | 'start'
+    | 'center'
+    | 'end'
+    | 'space-between'
+    | 'space-around'
+    | 'space-evenly'
+  gap?: number | string
+  width?: number | string
+  height?: number | string
+  minWidth?: number | string
+  maxWidth?: number | string
+  minHeight?: number | string
+  maxHeight?: number | string
+  gridTemplateColumns?: string
+  gridTemplateRows?: string
+  margin?: number | string
+  padding?: number | string
+}
+
+export type CanvasNodeEditor = {
   x?: number
   y?: number
   width?: number
   height?: number
   rotation?: number
-  children: CanvasElementNode[]
 }
 
-export type CanvasItem = {
+export type CanvasNode = {
   id: number
-  type: CanvasItemType
-  x: number
-  y: number
-  width: number
-  height: number
-  rotation: number
-  classes: string
-  children: CanvasElementNode[]
+  type: CanvasNodeType
+  props: CanvasNodeProps
+  styles: CanvasNodeStyles
+  layout: CanvasNodeLayout
+  editor: CanvasNodeEditor
+  children: CanvasNode[]
 }
+
+export type CanvasComponentType = CanvasNodeType
 
 export type CanvasPage = {
   id: string
   name: string
-  items: CanvasItem[]
+  nodes: CanvasNode[]
 }
 
 export type CanvasSize = {
@@ -50,7 +77,7 @@ export type CanvasSize = {
 }
 
 export const CANVAS_COMPONENTS: Record<
-  CanvasItemType,
+  CanvasComponentType,
   { label: string; width: number; height: number; description: string }
 > = {
   header: {
@@ -123,9 +150,9 @@ export const CANVAS_COMPONENTS: Record<
 
 export const CANVAS_COMPONENT_TYPES = Object.keys(
   CANVAS_COMPONENTS,
-) as CanvasItemType[]
+) as CanvasComponentType[]
 
-export const CANVAS_ELEMENT_LABELS: Record<CanvasElementType, string> = {
+export const CANVAS_NODE_LABELS: Record<CanvasNodeType, string> = {
   container: 'Container',
   text: 'Text block',
   button: 'Button',
@@ -138,7 +165,3 @@ export const CANVAS_ELEMENT_LABELS: Record<CanvasElementType, string> = {
   card: 'Info card',
   section: 'Section',
 }
-
-export const CANVAS_ELEMENT_TYPES = Object.keys(
-  CANVAS_ELEMENT_LABELS,
-) as CanvasElementType[]

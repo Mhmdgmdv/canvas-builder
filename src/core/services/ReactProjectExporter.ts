@@ -1,4 +1,4 @@
-import type { CanvasItem, CanvasPage } from '../models/canvasItem'
+import type { CanvasNode, CanvasPage } from '../models/canvasNode'
 import { getCanvasPageSize } from './CanvasPageLayout'
 import { ZipArchive } from './ZipArchive'
 
@@ -12,8 +12,8 @@ function quote(value: string): string {
   return JSON.stringify(value)
 }
 
-function getPageExtent(items: CanvasItem[]): { width: number; height: number } {
-  return getCanvasPageSize(items, 960)
+function getPageExtent(nodes: CanvasNode[]): { width: number; height: number } {
+  return getCanvasPageSize(nodes, 960)
 }
 
 function getComponentFileName(name: string, index: number): string {
@@ -30,60 +30,78 @@ function getComponentFileName(name: string, index: number): string {
 }
 
 function generateCanvasNodeComponent(): string {
-  return `import type { CanvasElementNode } from './canvasTypes'
-import type { ReactNode } from 'react'
+  return `import type { CanvasNode as CanvasNodeData } from './canvasTypes'
+import type { CSSProperties, ReactNode } from 'react'
 
 type CanvasNodeProps = {
-  node: CanvasElementNode
+  node: CanvasNodeData
 }
 
 export function CanvasNode({ node }: CanvasNodeProps) {
   const children = node.children.map((child) => <CanvasNode key={child.id} node={child} />)
   let content: ReactNode
+  const layoutStyle: CSSProperties = {
+    display: node.layout.display,
+    flexDirection: node.layout.flexDirection,
+    flexWrap: node.layout.flexWrap,
+    alignItems: node.layout.alignItems,
+    justifyContent: node.layout.justifyContent,
+    gap: node.layout.gap,
+    width: node.layout.width,
+    height: node.layout.height,
+    minWidth: node.layout.minWidth,
+    maxWidth: node.layout.maxWidth,
+    minHeight: node.layout.minHeight,
+    maxHeight: node.layout.maxHeight,
+    gridTemplateColumns: node.layout.gridTemplateColumns,
+    gridTemplateRows: node.layout.gridTemplateRows,
+    margin: node.layout.margin,
+    padding: node.layout.padding,
+  }
 
   switch (node.type) {
     case 'container':
-      content = <div className={node.classes}>{children}</div>
+      content = <div className={node.styles.classes} style={layoutStyle}>{children}</div>
       break
     case 'header':
-      content = <header className={node.classes}>{children}</header>
+      content = <header className={node.styles.classes} style={layoutStyle}>{children}</header>
       break
     case 'hero':
     case 'section':
-      content = <section className={node.classes}>{children}</section>
+      content = <section className={node.styles.classes} style={layoutStyle}>{children}</section>
       break
     case 'card':
-      content = <article className={node.classes}>{children}</article>
+      content = <article className={node.styles.classes} style={layoutStyle}>{children}</article>
       break
     case 'text':
-      content = <><p className={node.classes}>{node.text}</p>{children}</>
+      content = <><p className={node.styles.classes} style={layoutStyle}>{node.props.text}</p>{children}</>
       break
     case 'button':
-      content = <button type="button" className={node.classes}>{node.text}{children}</button>
+      content = <button type="button" className={node.styles.classes} style={layoutStyle}>{node.props.text}{children}</button>
       break
     case 'icon':
-      content = <><span aria-hidden="true" className={node.classes}>{node.text}</span>{children}</>
+      content = <><span aria-hidden="true" className={node.styles.classes} style={layoutStyle}>{node.props.text}</span>{children}</>
       break
     case 'image':
-      content = <><div role="img" aria-label={node.text} className={node.classes}>{node.text}</div>{children}</>
+      content = <><div role="img" aria-label={node.props.text} className={node.styles.classes} style={layoutStyle}>{node.props.text}</div>{children}</>
       break
     case 'input':
-      content = <><input type="text" placeholder={node.text} aria-label={node.text} className={node.classes} readOnly />{children}</>
+      content = <><input type="text" placeholder={node.props.text} aria-label={node.props.text} className={node.styles.classes} style={layoutStyle} readOnly />{children}</>
       break
     case 'divider':
-      content = <><hr className={node.classes} />{children}</>
+      content = <><hr className={node.styles.classes} style={layoutStyle} />{children}</>
       break
   }
 
   return (
     <div
       style={{
-        position: node.x !== undefined || node.y !== undefined ? 'relative' : undefined,
-        left: node.x,
-        top: node.y,
-        width: node.width,
-        height: node.height,
-        transform: node.rotation ? \`rotate(\${node.rotation}deg)\` : undefined,
+        position: node.layout.position === 'absolute' ? 'absolute' : node.editor.x !== undefined || node.editor.y !== undefined ? 'relative' : undefined,
+        left: node.editor.x,
+        top: node.editor.y,
+        width: node.editor.width,
+        height: node.editor.height,
+        transform: node.editor.rotation ? \`rotate(\${node.editor.rotation}deg)\` : undefined,
         transformOrigin: 'center center',
       }}
     >
@@ -95,13 +113,13 @@ export function CanvasNode({ node }: CanvasNodeProps) {
 }
 
 function generatePageComponent(page: CanvasPage, componentName: string): string {
-  const items = JSON.stringify(page.items, null, 2)
-  const extent = getPageExtent(page.items)
+  const nodes = JSON.stringify(page.nodes, null, 2)
+  const extent = getPageExtent(page.nodes)
 
-  return `import { CanvasNode } from '../components/CanvasNode'
-import type { CanvasItem } from '../components/canvasTypes'
+  return `import { CanvasNode as CanvasNodeView } from '../components/CanvasNode'
+import type { CanvasNode as CanvasNodeData } from '../components/canvasTypes'
 
-const items: CanvasItem[] = ${items}
+const nodes: CanvasNodeData[] = ${nodes}
 
 export default function ${componentName}() {
   return (
@@ -109,21 +127,43 @@ export default function ${componentName}() {
       className="relative min-h-screen bg-slate-50"
       style={{ width: 'max(100%, ${extent.width}px)', minHeight: '${extent.height}px' }}
     >
-      {items.map((item) => (
+      {nodes.map((node) => (
         <div
-          key={item.id}
+          key={node.id}
           className="absolute"
           style={{
-            left: item.x,
-            top: item.y,
-            width: item.width,
-            height: item.height,
-            transform: \`rotate(\${item.rotation}deg)\`,
+            left: node.editor.x,
+            top: node.editor.y,
+            width: node.editor.width,
+            height: node.editor.height,
+            transform: \`rotate(\${node.editor.rotation ?? 0}deg)\`,
             transformOrigin: 'center center',
           }}
         >
-          <div className={item.classes} style={{ width: '100%', height: '100%' }}>
-            {item.children.map((node) => <CanvasNode key={node.id} node={node} />)}
+          <div
+            className={node.styles.classes}
+            style={{
+              width: node.layout.width ?? '100%',
+              height: node.layout.height ?? '100%',
+              display: node.layout.display,
+              flexDirection: node.layout.flexDirection,
+              flexWrap: node.layout.flexWrap,
+              alignItems: node.layout.alignItems,
+              justifyContent: node.layout.justifyContent,
+              gap: node.layout.gap,
+              minWidth: node.layout.minWidth,
+              maxWidth: node.layout.maxWidth,
+              minHeight: node.layout.minHeight,
+              maxHeight: node.layout.maxHeight,
+              gridTemplateColumns: node.layout.gridTemplateColumns,
+              gridTemplateRows: node.layout.gridTemplateRows,
+              margin: node.layout.margin,
+              padding: node.layout.padding,
+            }}
+          >
+            {node.children.map((child) => (
+              <CanvasNodeView key={child.id} node={child} />
+            ))}
           </div>
         </div>
       ))}
@@ -241,31 +281,36 @@ export class ReactProjectExporter {
     archive.addFile('src/main.tsx', "import { StrictMode } from 'react'\nimport { createRoot } from 'react-dom/client'\nimport App from './App'\nimport './index.css'\n\ncreateRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)\n")
     archive.addFile('src/vite-env.d.ts', '/// <reference types="vite/client" />\n')
     archive.addFile('src/index.css', '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\nhtml, body, #root { min-height: 100%; margin: 0; }\nbody { min-width: 320px; font-family: system-ui, sans-serif; }\n')
-    archive.addFile('src/components/canvasTypes.ts', `export type CanvasElementType = 'container' | 'header' | 'hero' | 'section' | 'card' | 'text' | 'button' | 'icon' | 'image' | 'input' | 'divider'
+    archive.addFile('src/components/canvasTypes.ts', `export type CanvasNodeType = 'container' | 'header' | 'hero' | 'section' | 'card' | 'text' | 'button' | 'icon' | 'image' | 'input' | 'divider'
 
-export type CanvasElementNode = {
-  id: number
-  type: CanvasElementType
-  text: string
-  classes: string
-  x?: number
-  y?: number
-  width?: number
-  height?: number
-  rotation?: number
-  children: CanvasElementNode[]
+export type CanvasNodeLayout = {
+  display?: 'block' | 'flex' | 'grid' | 'inline' | 'inline-flex'
+  position?: 'flow' | 'absolute'
+  flexDirection?: 'row' | 'column' | 'row-reverse' | 'column-reverse'
+  flexWrap?: 'nowrap' | 'wrap' | 'wrap-reverse'
+  alignItems?: 'start' | 'center' | 'end' | 'stretch' | 'baseline'
+  justifyContent?: 'start' | 'center' | 'end' | 'space-between' | 'space-around' | 'space-evenly'
+  gap?: number | string
+  width?: number | string
+  height?: number | string
+  minWidth?: number | string
+  maxWidth?: number | string
+  minHeight?: number | string
+  maxHeight?: number | string
+  gridTemplateColumns?: string
+  gridTemplateRows?: string
+  margin?: number | string
+  padding?: number | string
 }
 
-export type CanvasItem = {
+export type CanvasNode = {
   id: number
-  type: string
-  x: number
-  y: number
-  width: number
-  height: number
-  rotation: number
-  classes: string
-  children: CanvasElementNode[]
+  type: CanvasNodeType
+  props: { text: string }
+  styles: { classes: string }
+  layout: CanvasNodeLayout
+  editor: { x?: number; y?: number; width?: number; height?: number; rotation?: number }
+  children: CanvasNode[]
 }
 `)
     archive.addFile('src/components/CanvasNode.tsx', generateCanvasNodeComponent())
