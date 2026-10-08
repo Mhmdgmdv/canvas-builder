@@ -11,11 +11,17 @@ import { CanvasPageToolbar } from './CanvasPageToolbar'
 import { CanvasStage } from './CanvasStage'
 import { getCanvasPageSize } from '../services/CanvasPageLayout'
 import { CanvasWorkspaceStorage } from '../services/CanvasWorkspaceStorage'
+import {
+  changeCanvasNodeId,
+  moveCanvasNode,
+  renameCanvasNode,
+} from '../services/CanvasNodeTree'
+import type { CanvasNodeDropPosition } from '../services/CanvasNodeTree'
 import { ReactProjectExporter } from '../services/ReactProjectExporter'
 import './CanvasBuilder.css'
 
 type ActiveDrag = {
-  id: number
+  id: string
   startX: number
   startY: number
   originX: number
@@ -24,13 +30,12 @@ type ActiveDrag = {
 
 function findNode(
   nodes: CanvasNode[],
-  targetId: number,
+  targetId: string,
 ): CanvasNode | null {
   for (const node of nodes) {
     if (node.id === targetId) {
       return node
     }
-
     const match = findNode(node.children, targetId)
     if (match) {
       return match
@@ -40,9 +45,21 @@ function findNode(
   return null
 }
 
+function hasNodeId(
+  nodes: CanvasNode[],
+  targetId: string,
+  exceptId: string,
+): boolean {
+  return nodes.some(
+    (node) =>
+      (node.id !== exceptId && node.id === targetId) ||
+      hasNodeId(node.children, targetId, exceptId),
+  )
+}
+
 function updateNode(
   nodes: CanvasNode[],
-  targetId: number,
+  targetId: string,
   update: (node: CanvasNode) => CanvasNode,
 ): CanvasNode[] {
   return nodes.map((node) =>
@@ -54,7 +71,7 @@ function updateNode(
 
 function appendNode(
   nodes: CanvasNode[],
-  targetId: number,
+  targetId: string,
   child: CanvasNode,
 ): CanvasNode[] {
   return nodes.map((node) =>
@@ -66,7 +83,7 @@ function appendNode(
 
 function removeNode(
   nodes: CanvasNode[],
-  targetId: number,
+  targetId: string,
 ): CanvasNode[] {
   return nodes
     .filter((node) => node.id !== targetId)
@@ -95,7 +112,7 @@ export function CanvasBuilder() {
     return factory
   })
   const [projectExporter] = useState(() => new ReactProjectExporter())
-  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [minimumPageWidth, setMinimumPageWidth] = useState(320)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -130,31 +147,22 @@ export function CanvasBuilder() {
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
       const activeDrag = dragRef.current
-      const stage = stageRef.current
-
-      if (!activeDrag || !stage) {
-        return
-      }
-
-      const stageRect = stage.getBoundingClientRect()
-      const deltaX = event.clientX - stageRect.left - activeDrag.startX
-      const deltaY = event.clientY - stageRect.top - activeDrag.startY
+      if (!activeDrag) return
+      const deltaX = event.clientX - activeDrag.startX
+      const deltaY = event.clientY - activeDrag.startY
 
       setWorkspace((current) => ({
         ...current,
         pages: updateNodesInPages(current.pages, current.activePageId, (nodes) =>
-          nodes.map((node) =>
-            node.id === activeDrag.id
-              ? {
-                  ...node,
-                  editor: {
-                    ...node.editor,
-                    x: Math.min(Math.max(activeDrag.originX + deltaX, 16), 50000),
-                    y: Math.min(Math.max(activeDrag.originY + deltaY, 16), 50000),
-                  },
-                }
-              : node,
-          ),
+          updateNode(nodes, activeDrag.id, (node) => ({
+            ...node,
+            layout: { ...node.layout, position: 'absolute' },
+            editor: {
+              ...node.editor,
+              x: Math.min(Math.max(activeDrag.originX + deltaX, 0), 50000),
+              y: Math.min(Math.max(activeDrag.originY + deltaY, 0), 50000),
+            },
+          })),
         ),
       }))
     }
@@ -260,27 +268,83 @@ export function CanvasBuilder() {
     setSelectedNodeId(null)
   }
 
+  const renameNode = (currentId: string, requestedName: string): string | null => {
+    const nextName = requestedName.trim()
+    if (!nextName) return 'Name cannot be empty.'
+    updateActiveNodes((nodes) => renameCanvasNode(nodes, currentId, nextName))
+    return null
+  }
+
+  const changeNodeId = (currentId: string, requestedId: string): string | null => {
+    const nextId = requestedId.trim()
+    if (!nextId) return 'ID cannot be empty.'
+    if (/\s/.test(nextId)) return 'ID cannot contain spaces.'
+    if (hasNodeId(activePage.nodes, nextId, currentId)) {
+      return 'A node with this ID already exists on the page.'
+    }
+    nodeFactory.reserveId(nextId)
+    updateActiveNodes((nodes) => changeCanvasNodeId(nodes, currentId, nextId))
+    setSelectedNodeId((selectedId) =>
+      selectedId === currentId ? nextId : selectedId,
+    )
+    return null
+  }
+
+  const moveNode = (
+    draggedId: string,
+    targetId: string | null,
+    position: CanvasNodeDropPosition,
+  ) => {
+    updateActiveNodes((nodes) =>
+      moveCanvasNode(nodes, draggedId, targetId, position),
+    )
+  }
+
   const startDraggingRootNode = (
     item: CanvasNode,
     event: ReactPointerEvent<HTMLDivElement>,
   ) => {
     event.preventDefault()
-    const selectedCanvasNode = event.target instanceof Element
-      ? event.target.closest<HTMLElement>('[data-canvas-node-id]')
-      : null
-    setSelectedNodeId(
-      selectedCanvasNode
-        ? Number(selectedCanvasNode.dataset.canvasNodeId)
-        : item.id,
-    )
-
-    const stageRect = stageRef.current?.getBoundingClientRect()
+    setSelectedNodeId(item.id)
     dragRef.current = {
       id: item.id,
-      startX: stageRect ? event.clientX - stageRect.left : event.clientX,
-      startY: stageRect ? event.clientY - stageRect.top : event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
       originX: item.editor.x ?? 0,
       originY: item.editor.y ?? 0,
+    }
+  }
+
+  const startDraggingChildNode = (
+    node: CanvasNode,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setSelectedNodeId(node.id)
+    const parent = event.currentTarget.parentElement?.closest<HTMLElement>(
+      '.canvas-node-frame, .canvas-node',
+    )
+    const nodeRect = event.currentTarget.getBoundingClientRect()
+    const parentRect = parent?.getBoundingClientRect() ?? stageRef.current?.getBoundingClientRect()
+    const originX =
+      node.layout.position === 'absolute'
+        ? node.editor.x ?? 0
+        : parentRect
+          ? nodeRect.left - parentRect.left
+          : node.editor.x ?? 0
+    const originY =
+      node.layout.position === 'absolute'
+        ? node.editor.y ?? 0
+        : parentRect
+          ? nodeRect.top - parentRect.top
+          : node.editor.y ?? 0
+    dragRef.current = {
+      id: node.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX,
+      originY,
     }
   }
 
@@ -312,7 +376,7 @@ export function CanvasBuilder() {
 
   const changeSelectedTransform = (
     transform: Partial<
-      Pick<CanvasNode['editor'], 'x' | 'y' | 'width' | 'height' | 'rotation'>
+      Pick<CanvasNode['editor'], 'x' | 'y' | 'width' | 'height' | 'rotation' | 'scale'>
     >,
   ) => {
     if (selectedNodeId === null) {
@@ -327,12 +391,23 @@ export function CanvasBuilder() {
         if (transform.width !== undefined) editor.width = Math.min(Math.max(transform.width, 32), 5000)
         if (transform.height !== undefined) editor.height = Math.min(Math.max(transform.height, 24), 5000)
         if (transform.rotation !== undefined) editor.rotation = Math.min(Math.max(transform.rotation, -360), 360)
+        if (transform.scale !== undefined) editor.scale = Math.min(Math.max(transform.scale, 0.1), 5)
         if ('x' in transform && transform.x === undefined) delete editor.x
         if ('y' in transform && transform.y === undefined) delete editor.y
         if ('width' in transform && transform.width === undefined) delete editor.width
         if ('height' in transform && transform.height === undefined) delete editor.height
         if ('rotation' in transform && transform.rotation === undefined) delete editor.rotation
-        return { ...node, editor }
+        if ('scale' in transform && transform.scale === undefined) delete editor.scale
+        const isRoot = activePage.nodes.some((root) => root.id === node.id)
+        const hasPosition = editor.x !== undefined || editor.y !== undefined
+        return {
+          ...node,
+          layout: {
+            ...node.layout,
+            position: isRoot || hasPosition ? 'absolute' : 'flow',
+          },
+          editor,
+        }
       }),
     )
   }
@@ -378,6 +453,9 @@ export function CanvasBuilder() {
           onChangeClasses={changeSelectedClasses}
           onChangeTransform={changeSelectedTransform}
           onDeleteSelected={deleteSelectedNode}
+          onRenameNode={renameNode}
+          onChangeNodeId={changeNodeId}
+          onMoveNode={moveNode}
         />
 
         <main className="canvas-panel">
@@ -398,7 +476,7 @@ export function CanvasBuilder() {
               stageRef={stageRef}
               pageSize={pageSize}
               onRootNodePointerDown={startDraggingRootNode}
-              onSelectNode={setSelectedNodeId}
+              onChildNodePointerDown={startDraggingChildNode}
             />
           </div>
         </main>

@@ -101,9 +101,12 @@ export function CanvasNode({ node }: CanvasNodeProps) {
         top: node.editor.y,
         width: node.editor.width,
         height: node.editor.height,
-        transform: node.editor.rotation ? \`rotate(\${node.editor.rotation}deg)\` : undefined,
+        transform: node.editor.rotation || (node.editor.scale ?? 1) !== 1
+          ? \`rotate(\${node.editor.rotation ?? 0}deg) scale(\${node.editor.scale ?? 1})\`
+          : undefined,
         transformOrigin: 'center center',
       }}
+      id={node.id}
     >
       {content}
     </div>
@@ -136,9 +139,10 @@ export default function ${componentName}() {
             top: node.editor.y,
             width: node.editor.width,
             height: node.editor.height,
-            transform: \`rotate(\${node.editor.rotation ?? 0}deg)\`,
+            transform: \`rotate(\${node.editor.rotation ?? 0}deg) scale(\${node.editor.scale ?? 1})\`,
             transformOrigin: 'center center',
           }}
+          id={node.id}
         >
           <div
             className={node.styles.classes}
@@ -304,12 +308,13 @@ export type CanvasNodeLayout = {
 }
 
 export type CanvasNode = {
-  id: number
+  id: string
+  name: string
   type: CanvasNodeType
   props: { text: string }
   styles: { classes: string }
   layout: CanvasNodeLayout
-  editor: { x?: number; y?: number; width?: number; height?: number; rotation?: number }
+  editor: { x?: number; y?: number; width?: number; height?: number; rotation?: number; scale?: number }
   children: CanvasNode[]
 }
 `)

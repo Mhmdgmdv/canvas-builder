@@ -15,14 +15,23 @@ function includeNodeBounds(
   bounds: CanvasPageSize,
 ): void {
   for (const node of nodes) {
-    const { x = 0, y = 0, width = 0, height = 0, rotation = 0 } = node.editor
+    const {
+      x = 0,
+      y = 0,
+      width = 0,
+      height = 0,
+      rotation = 0,
+      scale = 1,
+    } = node.editor
+    const scaledWidth = width * scale
+    const scaledHeight = height * scale
     const radians = (rotation * Math.PI) / 180
     const rotatedWidth =
-      Math.abs(width * Math.cos(radians)) +
-      Math.abs(height * Math.sin(radians))
+      Math.abs(scaledWidth * Math.cos(radians)) +
+      Math.abs(scaledHeight * Math.sin(radians))
     const rotatedHeight =
-      Math.abs(height * Math.cos(radians)) +
-      Math.abs(width * Math.sin(radians))
+      Math.abs(scaledHeight * Math.cos(radians)) +
+      Math.abs(scaledWidth * Math.sin(radians))
     const absoluteX = originX + x
     const absoluteY = originY + y
 

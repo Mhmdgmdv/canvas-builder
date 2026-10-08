@@ -6,11 +6,14 @@ import { CanvasNodeChildren } from './CanvasNodeChildren'
 
 type CanvasStageProps = {
   nodes: CanvasNode[]
-  selectedNodeId: number | null
+  selectedNodeId: string | null
   stageRef: RefObject<HTMLDivElement | null>
   pageSize: CanvasPageSize
   onRootNodePointerDown: (node: CanvasNode, event: ReactPointerEvent<HTMLDivElement>) => void
-  onSelectNode: (nodeId: number) => void
+  onChildNodePointerDown: (
+    node: CanvasNode,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => void
 }
 
 export function CanvasStage({
@@ -19,7 +22,7 @@ export function CanvasStage({
   stageRef,
   pageSize,
   onRootNodePointerDown,
-  onSelectNode,
+  onChildNodePointerDown,
 }: CanvasStageProps) {
   return (
     <div
@@ -42,9 +45,10 @@ export function CanvasStage({
             top: node.editor.y,
             width: node.editor.width,
             height: node.editor.height,
-            transform: `rotate(${node.editor.rotation ?? 0}deg)`,
+            transform: `rotate(${node.editor.rotation ?? 0}deg) scale(${node.editor.scale ?? 1})`,
             transformOrigin: 'center center',
           }}
+          id={node.id}
           onPointerDown={(event) => onRootNodePointerDown(node, event)}
         >
           <div
@@ -58,7 +62,7 @@ export function CanvasStage({
             <CanvasNodeChildren
               nodes={node.children}
               selectedNodeId={selectedNodeId}
-              onSelectNode={onSelectNode}
+              onNodePointerDown={onChildNodePointerDown}
             />
           </div>
         </div>

@@ -1,10 +1,14 @@
 import type { ReactNode } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { CanvasNode } from '../models/canvasNode'
 import { getCanvasNodeLayoutStyle } from '../services/CanvasNodeLayout'
 
 type CanvasSelectionProps = {
-  selectedNodeId: number | null
-  onSelectNode: (id: number) => void
+  selectedNodeId: string | null
+  onNodePointerDown: (
+    node: CanvasNode,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => void
 }
 
 type CanvasNodeChildrenProps = CanvasSelectionProps & {
@@ -18,8 +22,8 @@ type CanvasElementProps = CanvasSelectionProps & {
 
 function renderChildren(
   nodes: CanvasNode[],
-  selectedNodeId: number | null,
-  onSelectNode: (id: number) => void,
+  selectedNodeId: string | null,
+  onNodePointerDown: CanvasSelectionProps['onNodePointerDown'],
   insideButton = false,
 ) {
   return nodes.map((child) => (
@@ -27,7 +31,7 @@ function renderChildren(
       key={child.id}
       node={child}
       selectedNodeId={selectedNodeId}
-      onSelectNode={onSelectNode}
+      onNodePointerDown={onNodePointerDown}
       insideButton={insideButton}
     />
   ))
@@ -36,7 +40,7 @@ function renderChildren(
 function CanvasElement({
   node,
   selectedNodeId,
-  onSelectNode,
+  onNodePointerDown,
   insideButton = false,
 }: CanvasElementProps) {
   const classes = [
@@ -48,33 +52,53 @@ function CanvasElement({
   let content: ReactNode
   switch (node.type) {
     case 'container':
-      content = <div className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>{renderChildren(node.children, selectedNodeId, onSelectNode)}</div>
+      content = (
+        <div className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>
+          {renderChildren(node.children, selectedNodeId, onNodePointerDown)}
+        </div>
+      )
       break
     case 'text':
-      content = insideButton
-        ? <span className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>{node.props.text}</span>
-        : <p className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>{node.props.text}</p>
+      content = insideButton ? (
+        <span className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>
+          {node.props.text}
+        </span>
+      ) : (
+        <p className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>
+          {node.props.text}
+        </p>
+      )
       break
     case 'button':
       content = (
         <button type="button" className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>
           {node.children.length > 0
-            ? renderChildren(node.children, selectedNodeId, onSelectNode, true)
+            ? renderChildren(node.children, selectedNodeId, onNodePointerDown, true)
             : node.props.text}
         </button>
       )
       break
     case 'header':
-      content = <header className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>{renderChildren(node.children, selectedNodeId, onSelectNode)}</header>
+      content = (
+        <header className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>
+          {renderChildren(node.children, selectedNodeId, onNodePointerDown)}
+        </header>
+      )
       break
     case 'hero':
-      content = <section className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>{renderChildren(node.children, selectedNodeId, onSelectNode)}</section>
+    case 'section':
+      content = (
+        <section className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>
+          {renderChildren(node.children, selectedNodeId, onNodePointerDown)}
+        </section>
+      )
       break
     case 'card':
-      content = <article className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>{renderChildren(node.children, selectedNodeId, onSelectNode)}</article>
-      break
-    case 'section':
-      content = <section className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>{renderChildren(node.children, selectedNodeId, onSelectNode)}</section>
+      content = (
+        <article className={classes} style={getCanvasNodeLayoutStyle(node.layout)}>
+          {renderChildren(node.children, selectedNodeId, onNodePointerDown)}
+        </article>
+      )
       break
     case 'icon':
       content = (
@@ -125,18 +149,19 @@ function CanvasElement({
         top: node.editor.y,
         width: node.editor.width,
         height: node.editor.height,
-        transform: node.editor.rotation
-          ? `rotate(${node.editor.rotation}deg)`
+        transform: node.editor.rotation || (node.editor.scale ?? 1) !== 1
+          ? `rotate(${node.editor.rotation ?? 0}deg) scale(${node.editor.scale ?? 1})`
           : undefined,
         transformOrigin: 'center center',
       }}
-      onPointerDown={() => onSelectNode(node.id)}
+      id={node.id}
+      onPointerDown={(event) => onNodePointerDown(node, event)}
       data-canvas-node-id={node.id}
     >
       {content}
       {node.children.length > 0 &&
         !['container', 'button', 'header', 'hero', 'card', 'section'].includes(node.type) &&
-        renderChildren(node.children, selectedNodeId, onSelectNode)}
+        renderChildren(node.children, selectedNodeId, onNodePointerDown)}
     </div>
   )
 }
@@ -144,11 +169,11 @@ function CanvasElement({
 export function CanvasNodeChildren({
   nodes,
   selectedNodeId,
-  onSelectNode,
+  onNodePointerDown,
 }: CanvasNodeChildrenProps) {
   return (
     <div className="canvas-node-children">
-      {renderChildren(nodes, selectedNodeId, onSelectNode)}
+      {renderChildren(nodes, selectedNodeId, onNodePointerDown)}
     </div>
   )
 }

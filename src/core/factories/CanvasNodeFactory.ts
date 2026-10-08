@@ -4,6 +4,7 @@ import {
   type CanvasNode,
   type CanvasPage,
   type CanvasSize,
+  CANVAS_NODE_LABELS,
 } from '../models/canvasNode'
 
 const nodeDefaults: Record<CanvasComponentType, { text: string; classes: string }> = {
@@ -55,19 +56,43 @@ const nodeDefaults: Record<CanvasComponentType, { text: string; classes: string 
 
 export class CanvasNodeFactory {
   private nextId = 1
+  private readonly usedIds = new Set<string>()
+  private readonly usedNames = new Set<string>()
 
   reserveIds(pages: CanvasPage[]): void {
-    const findMaxId = (nodes: CanvasNode[]): number =>
-      nodes.reduce(
-        (maxId, node) => Math.max(maxId, node.id, findMaxId(node.children)),
-        0,
-      )
-    const maxId = pages.reduce(
-      (pageMax, page) => Math.max(pageMax, findMaxId(page.nodes)),
-      0,
-    )
+    const reserve = (nodes: CanvasNode[]) => {
+      for (const node of nodes) {
+        this.usedIds.add(node.id)
+        this.usedNames.add(node.name.toLowerCase())
+        reserve(node.children)
+      }
+    }
+    pages.forEach((page) => reserve(page.nodes))
+  }
 
-    this.nextId = Math.max(this.nextId, maxId + 1)
+  reserveId(id: string): void {
+    this.usedIds.add(id)
+  }
+
+  private createId(type: CanvasComponentType): string {
+    let id = ''
+    do {
+      id = `${type}-${this.nextId++}`
+    } while (this.usedIds.has(id))
+    this.usedIds.add(id)
+    return id
+  }
+
+  private createName(type: CanvasComponentType): string {
+    const baseName = CANVAS_NODE_LABELS[type]
+    let name = baseName
+    let suffix = 2
+    while (this.usedNames.has(name.toLowerCase())) {
+      name = `${baseName} ${suffix}`
+      suffix += 1
+    }
+    this.usedNames.add(name.toLowerCase())
+    return name
   }
 
   createRoot(type: CanvasComponentType, nodeCount: number, canvas: CanvasSize): CanvasNode {
@@ -118,10 +143,11 @@ export class CanvasNodeFactory {
     children: CanvasNode[],
     text: string,
   ): CanvasNode {
-    const id = this.nextId++
+    const id = this.createId(type)
 
     return {
       id,
+      name: this.createName(type),
       type,
       props: { text },
       styles: { classes: this.getRootClasses(type) },
@@ -249,7 +275,8 @@ export class CanvasNodeFactory {
     children: CanvasNode[] = [],
   ): CanvasNode {
     return {
-      id: this.nextId++,
+      id: this.createId(type),
+      name: this.createName(type),
       type,
       props: { text },
       styles: { classes },

@@ -57,7 +57,8 @@ Every node separates web content from canvas-only editing state:
 
 ```ts
 type CanvasNode = {
-  id: number
+  id: string
+  name: string
   type: ComponentType
   props: NodeProps
   styles: NodeStyles
@@ -68,6 +69,7 @@ type CanvasNode = {
 ```
 
 - `props` contains semantic component data such as text.
+- `name` is the human-readable label shown in the scene tree; `id` is the unique, editable HTML ID used to identify the node.
 - `styles` contains visual styling such as Tailwind classes.
 - `layout` is the structured home for CSS layout rules (flow/absolute positioning, flex, grid, spacing, and size constraints) as first-class layout controls are added.
 - `editor` contains canvas coordinates, editor dimensions, and rotation; it does not define the document tree or component properties.
@@ -110,9 +112,12 @@ Editor
 - [x] Multiple pages
 - [x] Local persistence
 - [x] React project export
-- [ ] Advanced object-tree manipulation
-- [ ] Drag-and-drop reordering
-- [ ] Move components between containers
+- [x] Advanced object-tree manipulation
+- [x] Drag-and-drop reordering
+- [x] Move components between containers
+- [x] Edit node names and IDs independently
+- [x] Expand and collapse scene-tree branches
+- [x] Select and transform nested nodes, including position, size, rotation, and scale
 - [ ] Contextual quick actions
 - [ ] Undo / redo
 

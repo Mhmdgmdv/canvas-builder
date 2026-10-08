@@ -51,10 +51,12 @@ export type CanvasNodeEditor = {
   width?: number
   height?: number
   rotation?: number
+  scale?: number
 }
 
 export type CanvasNode = {
-  id: number
+  id: string
+  name: string
   type: CanvasNodeType
   props: CanvasNodeProps
   styles: CanvasNodeStyles

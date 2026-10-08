@@ -8,25 +8,36 @@ import {
   type CanvasPage,
 } from '../models/canvasNode'
 import { TAILWIND_CLASS_OPTIONS } from '../models/tailwindClassOptions'
+import type { CanvasNodeDropPosition } from '../services/CanvasNodeTree'
 
 type CanvasInspectorProps = {
   page: CanvasPage
-  selectedNodeId: number | null
+  selectedNodeId: string | null
   selectedNode: CanvasNode | null
   onSelectPageRoot: () => void
-  onSelectNode: (nodeId: number) => void
+  onSelectNode: (nodeId: string) => void
   onCreateObject: (type: CanvasComponentType) => void
   onChangeText: (text: string) => void
   onChangeClasses: (classes: string) => void
   onChangeTransform: (transform: Partial<CanvasNode['editor']>) => void
   onDeleteSelected: () => void
+  onRenameNode: (currentId: string, nextId: string) => string | null
+  onChangeNodeId: (currentId: string, nextId: string) => string | null
+  onMoveNode: (
+    draggedId: string,
+    targetId: string | null,
+    position: CanvasNodeDropPosition,
+  ) => void
 }
 
 type StructureTreeProps = {
   nodes: CanvasNode[]
-  selectedNodeId: number | null
+  selectedNodeId: string | null
+  collapsedNodeIds: Set<string>
   depth?: number
-  onSelectNode: (nodeId: number) => void
+  onSelectNode: (nodeId: string) => void
+  onMoveNode: CanvasInspectorProps['onMoveNode']
+  onToggleNode: (nodeId: string) => void
 }
 
 function getUtilityGroup(utility: string): string | null {
@@ -63,30 +74,96 @@ function getUtilityGroup(utility: string): string | null {
 function StructureTree({
   nodes,
   selectedNodeId,
+  collapsedNodeIds,
   depth = 0,
   onSelectNode,
+  onMoveNode,
+  onToggleNode,
 }: StructureTreeProps) {
+  const [dropTarget, setDropTarget] = useState<{
+    id: string
+    position: Exclude<CanvasNodeDropPosition, 'root'>
+  } | null>(null)
+
+  const handleDrop = (
+    event: React.DragEvent<HTMLButtonElement>,
+    targetId: string,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const draggedId = event.dataTransfer.getData('application/x-canvas-node')
+    if (!draggedId) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const ratio = (event.clientY - bounds.top) / bounds.height
+    const position: CanvasNodeDropPosition =
+      ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'inside'
+    setDropTarget(null)
+    onMoveNode(draggedId, targetId, position)
+  }
+
   return (
     <ul className="structure-list">
       {nodes.map((node) => (
         <li key={node.id}>
-          <button
-            type="button"
-            className={`structure-item ${selectedNodeId === node.id ? 'is-active' : ''}`}
-            style={{ paddingLeft: 10 + depth * 14 }}
-            onClick={() => onSelectNode(node.id)}
-          >
-            <span>{CANVAS_NODE_LABELS[node.type]}</span>
-            <small>{node.props.text || 'Untitled'}</small>
-          </button>
-          {node.children.length > 0 && (
-            <StructureTree
-              nodes={node.children}
-              selectedNodeId={selectedNodeId}
-              depth={depth + 1}
-              onSelectNode={onSelectNode}
-            />
-          )}
+          <div className="structure-row" style={{ paddingLeft: depth * 14 }}>
+            {node.children.length > 0 ? (
+              <button
+                type="button"
+                className="structure-disclosure"
+                aria-label={`${collapsedNodeIds.has(node.id) ? 'Expand' : 'Collapse'} children of ${node.name}`}
+                aria-expanded={!collapsedNodeIds.has(node.id)}
+                onClick={() => onToggleNode(node.id)}
+              >
+                <span className={collapsedNodeIds.has(node.id) ? '' : 'is-expanded'} />
+              </button>
+            ) : (
+              <span className="structure-disclosure-placeholder" />
+            )}
+            <button
+              type="button"
+              draggable
+              className={[
+                'structure-item',
+                selectedNodeId === node.id ? 'is-active' : '',
+                dropTarget?.id === node.id ? `is-drop-target drop-${dropTarget.position}` : '',
+              ].filter(Boolean).join(' ')}
+              onClick={() => onSelectNode(node.id)}
+              onDragStart={(event) => {
+                event.dataTransfer.setData('application/x-canvas-node', node.id)
+                event.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes('application/x-canvas-node')) {
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'move'
+                  const bounds = event.currentTarget.getBoundingClientRect()
+                  const ratio = (event.clientY - bounds.top) / bounds.height
+                  const position = ratio < 0.25
+                    ? 'before'
+                    : ratio > 0.75
+                      ? 'after'
+                      : 'inside'
+                  setDropTarget({ id: node.id, position })
+                }
+              }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={(event) => handleDrop(event, node.id)}
+            >
+              <span className="structure-node-name">{node.name}</span>
+              <small>{CANVAS_NODE_LABELS[node.type]}</small>
+            </button>
+          </div>
+            {node.children.length > 0 && !collapsedNodeIds.has(node.id) && (
+              <StructureTree
+                nodes={node.children}
+                selectedNodeId={selectedNodeId}
+                collapsedNodeIds={collapsedNodeIds}
+                depth={depth + 1}
+                onSelectNode={onSelectNode}
+                onMoveNode={onMoveNode}
+                onToggleNode={onToggleNode}
+              />
+            )}
         </li>
       ))}
     </ul>
@@ -98,12 +175,14 @@ function TransformField({
   value,
   min,
   max,
+  step,
   onChange,
 }: {
   label: string
   value: number | undefined
   min: number
   max?: number
+  step?: number
   onChange: (value: number | undefined) => void
 }) {
   return (
@@ -115,6 +194,7 @@ function TransformField({
         placeholder="Auto"
         min={min}
         max={max}
+        step={step}
         onChange={(event) => {
           if (event.target.value === '') {
             onChange(undefined)
@@ -141,11 +221,43 @@ export function CanvasInspector({
   onChangeClasses,
   onChangeTransform,
   onDeleteSelected,
+  onRenameNode,
+  onChangeNodeId,
+  onMoveNode,
 }: CanvasInspectorProps) {
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
   const [utilitySearch, setUtilitySearch] = useState('')
   const [isUtilitySearchOpen, setIsUtilitySearchOpen] = useState(false)
   const [activeUtilityIndex, setActiveUtilityIndex] = useState(0)
+  const [nodeNameEdit, setNodeNameEdit] = useState({
+    id: selectedNode?.id ?? '',
+    value: selectedNode?.name ?? '',
+    error: '',
+  })
+  const [nodeIdEdit, setNodeIdEdit] = useState({
+    id: selectedNode?.id ?? '',
+    value: selectedNode?.id ?? '',
+    error: '',
+  })
+  const nodeNameDraft =
+    selectedNode && nodeNameEdit.id === selectedNode.id
+      ? nodeNameEdit.value
+      : selectedNode?.name ?? ''
+  const nodeNameError =
+    selectedNode && nodeNameEdit.id === selectedNode.id
+      ? nodeNameEdit.error
+      : ''
+  const nodeIdDraft =
+    selectedNode && nodeIdEdit.id === selectedNode.id
+      ? nodeIdEdit.value
+      : selectedNode?.id ?? ''
+  const nodeIdError =
+    selectedNode && nodeIdEdit.id === selectedNode.id
+      ? nodeIdEdit.error
+      : ''
   const selectedObjectName = selectedNode
     ? CANVAS_NODE_LABELS[selectedNode.type]
     : 'Page root'
@@ -197,6 +309,29 @@ export function CanvasInspector({
     setIsCreateMenuOpen(false)
   }
 
+  const commitNodeName = () => {
+    if (!selectedNode) return
+    const error = onRenameNode(selectedNode.id, nodeNameDraft)
+    setNodeNameEdit({
+      id: selectedNode.id,
+      value: error ? nodeNameDraft : nodeNameDraft.trim(),
+      error: error ?? '',
+    })
+  }
+
+  const commitNodeId = () => {
+    if (!selectedNode) return
+    const error = onChangeNodeId(selectedNode.id, nodeIdDraft)
+    const value = error ? nodeIdDraft : nodeIdDraft.trim()
+    setNodeIdEdit({ id: error ? selectedNode.id : value, value, error: error ?? '' })
+  }
+
+  const handleRootDrop = (event: React.DragEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    const draggedId = event.dataTransfer.getData('application/x-canvas-node')
+    if (draggedId) onMoveNode(draggedId, null, 'root')
+  }
+
   return (
     <>
     <aside className="scene-panel">
@@ -236,36 +371,32 @@ export function CanvasInspector({
           type="button"
           className={`structure-item root-structure-item ${selectedNodeId === null ? 'is-active' : ''}`}
           onClick={onSelectPageRoot}
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes('application/x-canvas-node')) {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+            }
+          }}
+          onDrop={handleRootDrop}
         >
           <span>Page · {page.name}</span>
           <small>Root</small>
         </button>
-        <ul className="structure-list">
-          {page.nodes.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                className={`structure-item root-structure-item ${selectedNodeId === item.id ? 'is-active' : ''}`}
-                onClick={() => onSelectNode(item.id)}
-              >
-                <span>{CANVAS_COMPONENTS[item.type].label}</span>
-                <small>
-                  {item.editor.width ?? CANVAS_COMPONENTS[item.type].width} ×{' '}
-                  {item.editor.height ?? CANVAS_COMPONENTS[item.type].height} ·{' '}
-                  {item.editor.rotation ?? 0}°
-                </small>
-              </button>
-              {item.children.length > 0 && (
-                <StructureTree
-                  nodes={item.children}
-                  selectedNodeId={selectedNodeId}
-                  depth={1}
-                  onSelectNode={onSelectNode}
-                />
-              )}
-            </li>
-          ))}
-        </ul>
+        <StructureTree
+          nodes={page.nodes}
+          selectedNodeId={selectedNodeId}
+          collapsedNodeIds={collapsedNodeIds}
+          onSelectNode={onSelectNode}
+          onMoveNode={onMoveNode}
+          onToggleNode={(nodeId) =>
+            setCollapsedNodeIds((collapsed) => {
+              const updated = new Set(collapsed)
+              if (updated.has(nodeId)) updated.delete(nodeId)
+              else updated.add(nodeId)
+              return updated
+            })
+          }
+        />
       </section>
     </aside>
 
@@ -277,6 +408,68 @@ export function CanvasInspector({
       <section className="inspector-section properties-section">
         {selectedNode ? (
           <>
+            <label className="inspector-field node-name-field">
+              <span>Name</span>
+              <input
+                type="text"
+                value={nodeNameDraft}
+                aria-invalid={Boolean(nodeNameError)}
+                onChange={(event) => {
+                  setNodeNameEdit({
+                    id: selectedNode.id,
+                    value: event.target.value,
+                    error: '',
+                  })
+                }}
+                onBlur={commitNodeName}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    event.currentTarget.blur()
+                  } else if (event.key === 'Escape') {
+                    setNodeNameEdit({
+                      id: selectedNode.id,
+                      value: selectedNode.name,
+                      error: '',
+                    })
+                    event.currentTarget.blur()
+                  }
+                }}
+              />
+              {nodeNameError && (
+                <small className="field-error">{nodeNameError}</small>
+              )}
+            </label>
+            <label className="inspector-field node-name-field">
+              <span>ID</span>
+              <input
+                type="text"
+                value={nodeIdDraft}
+                aria-invalid={Boolean(nodeIdError)}
+                onChange={(event) =>
+                  setNodeIdEdit({
+                    id: selectedNode.id,
+                    value: event.target.value,
+                    error: '',
+                  })
+                }
+                onBlur={commitNodeId}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    event.currentTarget.blur()
+                  } else if (event.key === 'Escape') {
+                    setNodeIdEdit({
+                      id: selectedNode.id,
+                      value: selectedNode.id,
+                      error: '',
+                    })
+                    event.currentTarget.blur()
+                  }
+                }}
+              />
+              {nodeIdError && <small className="field-error">{nodeIdError}</small>}
+            </label>
             {canEditText ? (
                 <label className="inspector-field">
                   <span>
@@ -334,6 +527,14 @@ export function CanvasInspector({
                   min={-360}
                   max={360}
                   onChange={(rotation) => onChangeTransform({ rotation })}
+                />
+                <TransformField
+                  label="Scale"
+                  value={selectedNode.editor.scale ?? 1}
+                  min={0.1}
+                  max={5}
+                  step={0.1}
+                  onChange={(scale) => onChangeTransform({ scale })}
                 />
               </div>
 
